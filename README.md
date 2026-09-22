@@ -65,8 +65,7 @@ $$
 
 It allows us to test whether our model correctly predicts which mutations stabilize or destabilize a designed protein.
 
-Their work gives us the experimental ** ground truth** needed to train and evaluate our system.
-
+Their work gives us the experimental ground truth  needed to train and evaluate our system. 
 
 ---
 
