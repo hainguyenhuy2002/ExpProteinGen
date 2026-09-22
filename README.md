@@ -2,208 +2,346 @@
 
 ## 1. Motivation and Research Question
 
-Modern protein-generation methods can create many new protein sequences. However, after a protein is generated, researchers still need to know:
+Modern protein-generation models can create many new protein sequences. However, after a protein is generated, researchers still need to know:
 
 * Is this protein likely to be stable?
-* Which parts of the protein are sensitive to mutation?
-* Which small sequence changes could improve its stability?
-* Which changes are likely to damage the protein?
+* Which parts of the protein are sensitive or fragile?
+* Which mutations could improve its stability?
+* Which mutations should be avoided?
+* **Why does the model think a mutation is good or bad?**
 
-Therefore, this research focuses on **evaluating an already generated protein and suggesting how its sequence could be improved**.
+Most existing methods mainly provide a prediction score. A researcher may know that a mutation is predicted to improve stability, but may not understand **what part of the sequence or structure caused the prediction**.
+
+Therefore, this research focuses on building an **interpretable evaluator for generated proteins**.
 
 The first version focuses specifically on **folding stability**, because large public experimental datasets are available for this property.
 
-### Main research question
+### Main Research Question
 
-> **Given a generated protein that the model has never seen before, can we predict how different mutations will affect its folding stability and provide useful guidance for improving the protein?**
+> **Given a newly generated protein, can we predict which mutations will improve or damage its folding stability, while also explaining which parts of the protein structure are most important for each prediction?**
 
-In simple terms:
+In simple form:
 
 $$
 \text{Generated Protein}
 \rightarrow
-\text{Evaluate Stability}
+\text{Stability Evaluation}
 \rightarrow
-\text{Find Weak Positions}
+\text{Mutation Suggestions}
 \rightarrow
-\text{Suggest Better Mutations}
+\boxed{\text{Interpretation}}
 $$
 
-An additional research question can be explored later:
+The system should not only answer:
 
-> If one mutation damages the protein, can we find another mutation that compensates for the damage?
+> “Mutation A24L is predicted to improve stability.”
 
-This second question should only be studied if enough experimental double-mutation data are available.
+It should also provide:
+
+> “The prediction mainly depends on the local structural environment around residue 24 and its nearby residues.”
 
 ---
 
-## 2. Related Research and How This Research Builds on It
+# 2. Related Research and How This Research Builds on It
 
-Several previous studies already provide important foundations.
+## Tsuboyama et al., Nature 2023
 
-### Tsuboyama et al., Nature 2023
+Tsuboyama et al. created a large experimental dataset containing:
 
-Tsuboyama et al. created a large experimental dataset containing stability measurements for natural proteins, designed proteins, and many protein mutations.
+* natural proteins;
+* designed proteins;
+* single mutations;
+* double mutations;
+* experimentally measured folding stability;
+* predicted protein structures.
 
-Their work gives us the **experimental ground truth** needed to train and evaluate our system.
-
-We can use their data to ask questions such as:
-
-* Did this mutation increase stability?
-* Did this mutation decrease stability?
-* Which positions are very sensitive to mutation?
-* Do two mutations interact with each other?
-
-Therefore, our work does not need to perform new experiments at the beginning. We can first test the idea using existing public experimental measurements.
-
-### ThermoMPNN
-
-ThermoMPNN predicts how a mutation changes protein stability using protein structure.
-
-This means that simply predicting mutation stability is **not new**.
-
-Our research builds on this idea but aims to provide a more useful **protein-level evaluation**:
-
-> Instead of predicting only one mutation at a time, evaluate many possible mutations of the generated protein and produce an interpretable map showing where the protein is stable, fragile, or potentially improvable.
-
-### SPURS
-
-SPURS can also predict stability changes caused by single and multiple mutations.
-
-Therefore, predicting multiple mutations is also not enough to establish novelty.
-
-Our research must focus more strongly on whether the model can provide **reliable editing guidance for completely unseen designed proteins**, together with explanations and uncertainty.
-
-### How our research builds on them
-
-The relationship can be summarized as:
+This work provides the experimental data needed to learn:
 
 $$
-\text{Previous work:}
-\quad
-\text{Predict stability change of mutations}
+\text{Mutation}
+\rightarrow
+\text{Change in Stability}
+$$
+
+It allows us to test whether our model correctly predicts which mutations stabilize or destabilize a designed protein.
+
+---
+
+## Rocklin et al., Science 2017
+
+Rocklin et al. experimentally tested thousands of **de novo designed proteins** and many sequence variants.
+
+This dataset is especially useful because our research focuses on:
+
+$$
+\boxed{\text{Evaluating generated/designed proteins}}
+$$
+
+rather than only natural proteins.
+
+Rocklin's data allow us to test whether the model can evaluate proteins that were intentionally designed from scratch.
+
+---
+
+## ThermoMPNN
+
+ThermoMPNN predicts how mutations change protein stability using protein structure.
+
+Therefore:
+
+> **Predicting stability change alone is not enough to make our research new.**
+
+Our work builds on this by turning mutation prediction into a more complete evaluation of a generated protein.
+
+Instead of only returning:
+
+$$
+\Delta\Delta G = -1.2
+$$
+
+our system aims to return:
+
+* which positions are sensitive;
+* which mutations are promising;
+* which mutations are dangerous;
+* how confident the prediction is;
+* **which structural regions influenced the prediction.**
+
+---
+
+## SPURS
+
+SPURS also predicts stability changes caused by single and multiple mutations.
+
+This means that simply adding multiple mutations is also not sufficient as a research contribution.
+
+Our research therefore focuses more strongly on:
+
+$$
+\boxed{\text{Prediction + Protein-Level Evaluation + Interpretability}}
+$$
+
+rather than prediction alone.
+
+---
+
+# 3. Specific Problems This Research Solves
+
+## Problem 1 — We do not know which parts of a generated protein are fragile
+
+A newly generated protein may contain positions where small sequence changes strongly reduce stability.
+
+The system should identify:
+
+$$
+\boxed{\text{Sensitive positions}}
+$$
+
+For example:
+
+| Position | Sensitivity |
+| -------- | ----------- |
+| 12       | High        |
+| 24       | Low         |
+| 37       | High        |
+| 42       | Medium      |
+
+This helps researchers understand which parts of the generated protein are robust and which parts require caution.
+
+---
+
+## Problem 2 — We do not know which mutations could improve the protein
+
+For each position, many amino-acid substitutions are possible.
+
+The system should predict whether each mutation is:
+
+* stabilizing;
+* neutral;
+* destabilizing.
+
+For example:
+
+| Mutation | Predicted Effect       |
+| -------- | ---------------------- |
+| A24L     | Stabilizing            |
+| A24V     | Slightly stabilizing   |
+| A24D     | Strongly destabilizing |
+| F37A     | Destabilizing          |
+
+This helps researchers select a small number of useful mutations instead of experimentally testing every possibility.
+
+---
+
+## Problem 3 — Existing Predictions Are Difficult to Interpret
+
+This is one of the main focuses of the proposed research.
+
+A prediction such as:
+
+> “A24L improves stability.”
+
+is useful, but it does not tell the researcher **why the model made this prediction**.
+
+Our system should therefore provide an **interpretation for each important prediction**.
+
+### Example
+
+Instead of only returning:
+
+> A24L → predicted stabilizing
+
+the system could return:
+
+> A24L → predicted stabilizing
+> Important region: residues 21–28
+> Important neighboring residues: V21, F27, L28
+> Model confidence: high
+
+The corresponding 3D structure can highlight these residues.
+
+Therefore, the researcher can see:
+
+$$
+\text{Mutation}
+\rightarrow
+\text{Prediction}
+\rightarrow
+\boxed{\text{Important structural region}}
+$$
+
+### Interpretation Output
+
+The interpretation component could include:
+
+* important residues around the mutation;
+* important residue–residue relationships;
+* local structural environment;
+* whether the residue is buried or exposed;
+* which structural region contributes most strongly to the prediction;
+* model confidence.
+
+For example:
+
+$$
+\boxed{\text{A24L}}
 $$
 
 $$
 \downarrow
 $$
 
+**Predicted effect:** Stabilizing
+
+**Important region:** Local environment around residue 24
+
+**Important residues:** 21, 27, 28
+
+**Confidence:** High
+
+### Important Limitation
+
+The interpretation should be described as:
+
+> **what information the model used to make its prediction**
+
+rather than automatically claiming:
+
+> **the true physical mechanism causing the stability change.**
+
+For example, the model may identify residues 24 and 27 as important.
+
+But the available mutation dataset does not necessarily prove:
+
+> “Residue 24 forms a new hydrogen bond with residue 27 and this causes the stability increase.”
+
+The experimental dataset mainly tells us whether stability changed, not the exact physical reason why.
+
+Therefore, our research focuses on **model interpretability that can be checked against experimental mutation patterns**, rather than claiming full physical explanation.
+
+---
+
+## Problem 4 — The Evaluator Must Work on Unseen Generated Proteins
+
+The model should not only work on proteins that appeared during training.
+
+The real application is:
+
 $$
-\text{Our work:}
-\quad
-\text{Use these predictions to evaluate and diagnose an entire generated protein}
+\boxed{\text{New generated protein}}
 $$
 
-The goal is therefore not only:
+that the model has never seen before.
 
-> “What is the predicted stability change of mutation A24L?”
-
-but also:
-
-> “For this generated protein, where are the weak positions, which mutations are worth trying, which mutations should be avoided, and how confident are we?”
-
----
-
-## 3. Specific Problems This Research Solves
-
-The research addresses four main problems.
-
-### Problem 1 — We do not know which parts of a generated protein are fragile
-
-A generated protein may contain positions where even a small mutation causes a large decrease in stability.
-
-The system should identify these **sensitive positions**.
-
----
-
-### Problem 2 — We do not know which mutations could improve the protein
-
-For every position, there are many possible amino-acid substitutions.
-
-The system should predict:
-
-* stabilizing mutations;
-* destabilizing mutations;
-* mutations that probably have little effect.
-
-This allows researchers to focus on a much smaller number of promising edits.
-
----
-
-### Problem 3 — A prediction alone is difficult to understand
-
-A model may predict:
-
-> A24L improves stability.
-
-But researchers also want to know what information the model used.
-
-Therefore, the system should connect its prediction to the protein structure and show which local structural region is important for the prediction.
-
-These explanations should be described carefully as **model explanations**, because the stability dataset does not directly provide the true physical mechanism behind every mutation.
-
----
-
-### Problem 4 — The model may be unreliable on unfamiliar proteins
-
-The most important test is not whether the system works on proteins similar to its training data.
-
-It should be tested on **entirely unseen designed proteins**.
+Therefore, training and testing should be separated by protein.
 
 For example:
 
-$$
-\text{Training}
-=
-\text{Proteins A, B, C, D}
-$$
+### Training
 
-$$
-\text{Testing}
-=
-\text{Protein X}
-$$
+```text
+Protein A
+Protein B
+Protein C
+Protein D
+```
 
-No mutations from Protein X should appear during training.
+### Testing
 
-This allows us to test whether the evaluator can actually be used on a newly generated protein.
+```text
+Protein X
+```
+
+No mutations from Protein X should appear in the training dataset.
+
+Then we can test:
+
+> Can the system correctly evaluate the mutation landscape of a completely unseen designed protein?
+
+This follows the proposal's requirement to evaluate on held-out protein backgrounds.
 
 ---
 
-## 4. Specific Input and Output
+# 4. Specific Input and Output
 
-### Input
+## Input
 
-The main input is:
+The system takes:
 
-1. **Protein sequence**
+### 1. Protein Sequence
 
-   * The amino-acid sequence of the generated protein.
+The amino-acid sequence of the newly generated protein.
 
-2. **Protein structure**
+Example:
 
-   * An experimentally determined structure or a predicted structure such as an AlphaFold structure.
+```text
+MKTAYIAKQRQISFVKSHFSRQ...
+```
+
+### 2. Protein Structure
+
+A 3D structure of the protein.
+
+This can be:
+
+* experimentally determined structure; or
+* predicted structure such as an AlphaFold prediction.
 
 Optional input can include positions that researchers do not want to modify.
 
-The researcher does **not** need to provide experimental stability measurements when using the system.
+The researcher does **not** need experimental stability measurements when using the trained system.
 
-Experimental measurements are only required for training and evaluating the model.
+---
 
-### Output
+## Output
 
-The main output is an **editing map of the generated protein**.
+The system produces four major outputs.
 
-For example:
+### Output 1 — Stability Editing Map
 
-| Position | Mutation | Prediction             | Confidence |
-| -------- | -------- | ---------------------- | ---------- |
-| 12       | V → L    | Stabilizing            | High       |
-| 12       | V → D    | Destabilizing          | High       |
-| 24       | A → V    | Slightly stabilizing   | Medium     |
-| 37       | F → A    | Strongly destabilizing | High       |
+The system evaluates many possible mutations across the protein.
 
-The complete result can be represented as a heatmap:
+The result can be represented as:
 
 $$
 \text{Protein positions}
@@ -213,28 +351,209 @@ $$
 
 Each cell represents the predicted effect of one mutation.
 
-The system should return four main outputs:
+Example:
 
-**1. Editing map**
+| Position |       A |       V |       L |  D |  F |
+| -------- | ------: | ------: | ------: | -: | -: |
+| 12       | Neutral |       + |      ++ | -- |  - |
+| 13       |       - | Neutral |       + | -- |  + |
+| 14       |      ++ |       + | Neutral |  - | -- |
 
-Shows the predicted effect of possible mutations across the protein.
+This creates an **editing map for the entire generated protein**.
 
-**2. Sensitive positions**
+---
 
-Identifies regions where mutations are likely to strongly damage stability.
+### Output 2 — Sensitive and Important Positions
 
-**3. Recommended edits**
+The model identifies positions where mutations strongly affect stability.
 
-Identifies mutations that may improve folding stability.
+For example:
 
-**4. Structural explanation and confidence**
+> Position 37 is highly sensitive. Most substitutions are predicted to destabilize the protein.
 
-Shows which structural region is related to a prediction and how confident the system is.
+This helps researchers identify fragile regions.
 
-Therefore, the overall pipeline is:
+---
+
+### Output 3 — Suggested Mutations
+
+The model provides promising edits.
+
+Example:
+
+| Suggested Mutation | Predicted Stability Effect | Confidence |
+| ------------------ | -------------------------: | ---------- |
+| A24L               |                       +1.2 | High       |
+| D37N               |                       +0.8 | Medium     |
+| V42I               |                       +0.5 | High       |
+
+These mutations can then be tested experimentally.
+
+---
+
+### Output 4 — Interpretation of the Prediction
+
+This is a central output of the project.
+
+For every important suggested or risky mutation, the system should show **what parts of the protein contributed to the prediction**.
+
+For example:
+
+#### Mutation
 
 $$
-\boxed{\text{Generated Protein}}
+A24L
+$$
+
+#### Prediction
+
+$$
+\text{Stabilizing}
+$$
+
+#### Interpretation
+
+```text
+Important position: residue 24
+
+Important surrounding residues:
+21, 23, 27, 28
+
+Important structural region:
+local packed region around residue 24
+
+Model confidence:
+High
+```
+
+The same information can be shown on the protein's 3D structure by highlighting the relevant residues.
+
+Therefore, the final output is:
+
+$$
+\boxed{
+\text{Editing Map}
++
+\text{Sensitive Positions}
++
+\text{Suggested Mutations}
++
+\textbf{Structural Interpretation}
++
+\text{Confidence}
+}
+$$
+
+This extends the original proposal's editing-map and structural-explanation outputs.
+
+---
+
+# 5. Public Datasets
+
+### Main Dataset 1 — Tsuboyama et al., Nature 2023
+
+**Mega-scale experimental analysis of protein folding stability in biology and design**
+
+This is the main dataset for learning and evaluating mutation effects.
+
+It contains:
+
+* natural proteins;
+* computationally designed proteins;
+* experimental folding-stability measurements;
+* large numbers of single mutations;
+* double mutations;
+* predicted structures.
+
+It can support:
+
+$$
+\text{Original Protein}
++
+\text{Mutation}
+\rightarrow
+\text{Experimental Stability Change}
+$$
+
+This allows us to compare the model's predicted editing map with experimentally measured mutation effects.
+
+Important public files include:
+
+* `Tsuboyama2023_Dataset2_Dataset3_20230416.csv`
+* `Single_DMS_list.csv`
+* `Double_DMS_list.csv`
+* `AlphaFold_model_PDBs.zip`
+
+**Public access:**
+https://zenodo.org/records/7992926
+
+---
+
+### Main Dataset 2 — Rocklin et al., Science 2017 / TAPE Stability
+
+**Global analysis of protein folding using massively parallel design, synthesis, and testing**
+
+This dataset is especially relevant because it contains a large number of **de novo designed proteins**.
+
+It includes:
+
+* more than 15,000 designed miniproteins;
+* thousands of experimentally stable designs;
+* approximately 10,000 point-mutant variants;
+* experimentally measured stability information.
+
+This dataset helps answer:
+
+$$
+\boxed{
+\text{Can the evaluator work on designed/generated proteins?}
+}
+$$
+
+It can therefore complement Tsuboyama:
+
+### Tsuboyama
+
+Best suited for:
+
+$$
+\text{Mutation}
+\rightarrow
+\text{Stability Change}
+$$
+
+### Rocklin
+
+Best suited for:
+
+$$
+\text{Designed Protein}
+\rightarrow
+\text{Experimental Stability Evaluation}
+$$
+
+A processed version is available through the TAPE Stability benchmark.
+
+**Public access:**
+
+Original TAPE dataset:
+
+https://github.com/songlab-cal/tape-neurips2019
+
+Processed Stability dataset:
+
+https://huggingface.co/datasets/proteinglm/stability_prediction
+
+Before using Rocklin as an independent test set, sequence overlap with proteins used in the Tsuboyama training set should be removed.
+
+---
+
+# Final Research Pipeline
+
+The complete research can therefore be summarized as:
+
+$$
+\boxed{\text{Newly Generated Protein}}
 $$
 
 $$
@@ -250,7 +569,7 @@ $$
 $$
 
 $$
-\boxed{\text{Stability Evaluator}}
+\boxed{\text{Interpretable Stability Evaluator}}
 $$
 
 $$
@@ -258,142 +577,23 @@ $$
 $$
 
 $$
-\boxed{
-\text{Editing Map}
-+
-\text{Weak Positions}
-+
-\text{Suggested Mutations}
-+
-\text{Confidence}
-}
+\begin{array}{c}
+\text{Stability Editing Map}\\
++\\
+\text{Sensitive Positions}\\
++\\
+\text{Suggested Mutations}\\
++\\
+\mathbf{\text{Structural Interpretation}}\\
++\\
+\text{Prediction Confidence}
+\end{array}
 $$
 
-These outputs follow the original proposal's idea of an editing map, structural explanation, edit comparison, and evidence/limitations.
+The main goal is therefore not only:
 
----
+> **“Can we predict whether a mutation changes protein stability?”**
 
-## 5. Public Datasets
+but:
 
-We will mainly use **two public experimental protein-stability datasets**.
-
-### Dataset 1 — Tsuboyama et al., Nature 2023
-
-**Mega-scale experimental analysis of protein folding stability in biology and design**
-
-This will be the main dataset for learning and evaluating **mutation effects**.
-
-The dataset contains experimental folding-stability measurements for both natural and designed proteins. Importantly, it provides large mutation landscapes: the published dataset includes comprehensive single mutations for hundreds of protein domains and double mutations for selected residue pairs.
-
-For our research, it provides:
-
-* protein sequences;
-* experimentally measured folding stability;
-* single-amino-acid mutations;
-* double mutations;
-* designed proteins;
-* predicted protein structures.
-
-This allows us to study:
-
-$$
-\text{Original Protein}
-+
-\text{Mutation}
-\rightarrow
-\text{Change in Stability}
-$$
-
-and therefore train and test the **editing map** produced by our system.
-
-Useful files include:
-
-* `Tsuboyama2023_Dataset2_Dataset3_20230416.csv`
-* `Single_DMS_list.csv`
-* `Double_DMS_list.csv`
-* `AlphaFold_model_PDBs.zip`
-
-**Public access:**
-[Tsuboyama 2023 MegaScale dataset — Zenodo](https://zenodo.org/records/7992926?utm_source=chatgpt.com)
-
-The Zenodo release contains the processed stability datasets, structures, and analysis files used in the Nature study.
-
----
-
-### Dataset 2 — Rocklin et al., Science 2017 / TAPE Stability Dataset
-
-**Global analysis of protein folding using massively parallel design, synthesis, and testing**
-
-This dataset is especially relevant because it focuses directly on **de novo designed proteins**.
-
-Rocklin et al. experimentally measured folding and stability for:
-
-* more than **15,000 de novo designed miniproteins**;
-* about **10,000 point mutants**;
-* natural-protein controls;
-* negative-control sequences.
-
-More than 2,500 experimentally stable designed proteins were identified.
-
-This makes the dataset useful for our main application:
-
-$$
-\boxed{\text{Newly Generated Protein}}
-\rightarrow
-\boxed{\text{Evaluate Its Stability}}
-$$
-
-It can also help us test whether the model understands how small sequence changes around a designed protein affect stability.
-
-A processed version of this dataset is used as the **Stability task in TAPE**. TAPE provides protein sequences together with experimental stability scores and predefined train, validation, and test splits.
-
-**Public access:**
-
-[Original TAPE repository and Stability dataset](https://github.com/songlab-cal/tape-neurips2019?utm_source=chatgpt.com)
-
-A convenient downloadable processed version is also available here:
-
-[Processed Rocklin/TAPE Stability dataset — Hugging Face](https://huggingface.co/datasets/proteinglm/stability_prediction?utm_source=chatgpt.com)
-
-The processed version contains approximately **53,614 training, 2,512 validation, and 12,851 test sequences**, each associated with an experimental stability score.
-
----
-
-### How the Two Datasets Will Be Used
-
-The two datasets provide complementary information.
-
-**Tsuboyama 2023** is most useful for:
-
-$$
-\boxed{\text{Which mutation improves or damages this protein?}}
-$$
-
-because it contains large single- and double-mutation landscapes.
-
-**Rocklin 2017** is most useful for:
-
-$$
-\boxed{\text{Can the system evaluate newly designed proteins?}}
-$$
-
-because it contains thousands of experimentally tested de novo protein designs.
-
-Therefore, together they support the complete research goal:
-
-$$
-\text{Generated Protein}
-\rightarrow
-\text{Stability Evaluation}
-\rightarrow
-\text{Mutation Map}
-\rightarrow
-\text{Suggested Improvements}
-$$
-
-Before treating Rocklin as a fully independent test dataset, sequence overlap with the selected Tsuboyama training set should be checked and removed.
-
-
-# Research Direction in One Sentence
-
-> **Develop a system that takes a newly generated protein sequence and structure, evaluates how stable different parts of the protein are, predicts which small mutations could improve or damage its folding stability, and presents the results as an interpretable editing map that can be tested against public experimental data.**
+> **“Can we evaluate a newly generated protein, identify useful and risky mutations, and explain which parts of its structure influence those predictions?”**
