@@ -273,51 +273,126 @@ These outputs follow the original proposal's idea of an editing map, structural 
 
 ---
 
-## 5. Public Dataset
+## 5. Public Datasets
 
-### Main Dataset: Tsuboyama et al., Nature 2023
+We will mainly use **two public experimental protein-stability datasets**.
 
-The main dataset for this project is:
+### Dataset 1 — Tsuboyama et al., Nature 2023
 
 **Mega-scale experimental analysis of protein folding stability in biology and design**
 
-This dataset is particularly suitable because it contains:
+This will be the main dataset for learning and evaluating **mutation effects**.
 
-* natural proteins;
-* computationally designed proteins;
-* experimental folding-stability measurements;
-* large numbers of single mutations;
+The dataset contains experimental folding-stability measurements for both natural and designed proteins. Importantly, it provides large mutation landscapes: the published dataset includes comprehensive single mutations for hundreds of protein domains and double mutations for selected residue pairs.
+
+For our research, it provides:
+
+* protein sequences;
+* experimentally measured folding stability;
+* single-amino-acid mutations;
 * double mutations;
+* designed proteins;
 * predicted protein structures.
 
-Important public files include:
+This allows us to study:
+
+$$
+\text{Original Protein}
++
+\text{Mutation}
+\rightarrow
+\text{Change in Stability}
+$$
+
+and therefore train and test the **editing map** produced by our system.
+
+Useful files include:
 
 * `Tsuboyama2023_Dataset2_Dataset3_20230416.csv`
 * `Single_DMS_list.csv`
 * `Double_DMS_list.csv`
 * `AlphaFold_model_PDBs.zip`
 
-The single-mutation data can be used for the main project:
+**Public access:**
+[Tsuboyama 2023 MegaScale dataset — Zenodo](https://zenodo.org/records/7992926?utm_source=chatgpt.com)
 
-$$
-\text{Sequence + Structure + Mutation}
-\rightarrow
-\text{Experimental Stability Change}
-$$
-
-This allows us to train the model and compare its predicted editing map with the experimentally measured mutation landscape.
-
-The double-mutation data can later be used to study **mutation interactions and compensating mutations**.
-
-### ProteinGym
-
-ProteinGym can be used as an additional mutation-effect benchmark when the assay measures a relevant property.
-
-However, activity, binding, abundance, and folding stability are different properties. Therefore, only suitable stability-related assays should be used.
-
-Overlap with the Tsuboyama dataset must also be removed before treating ProteinGym as an independent test dataset.
+The Zenodo release contains the processed stability datasets, structures, and analysis files used in the Nature study.
 
 ---
+
+### Dataset 2 — Rocklin et al., Science 2017 / TAPE Stability Dataset
+
+**Global analysis of protein folding using massively parallel design, synthesis, and testing**
+
+This dataset is especially relevant because it focuses directly on **de novo designed proteins**.
+
+Rocklin et al. experimentally measured folding and stability for:
+
+* more than **15,000 de novo designed miniproteins**;
+* about **10,000 point mutants**;
+* natural-protein controls;
+* negative-control sequences.
+
+More than 2,500 experimentally stable designed proteins were identified.
+
+This makes the dataset useful for our main application:
+
+$$
+\boxed{\text{Newly Generated Protein}}
+\rightarrow
+\boxed{\text{Evaluate Its Stability}}
+$$
+
+It can also help us test whether the model understands how small sequence changes around a designed protein affect stability.
+
+A processed version of this dataset is used as the **Stability task in TAPE**. TAPE provides protein sequences together with experimental stability scores and predefined train, validation, and test splits.
+
+**Public access:**
+
+[Original TAPE repository and Stability dataset](https://github.com/songlab-cal/tape-neurips2019?utm_source=chatgpt.com)
+
+A convenient downloadable processed version is also available here:
+
+[Processed Rocklin/TAPE Stability dataset — Hugging Face](https://huggingface.co/datasets/proteinglm/stability_prediction?utm_source=chatgpt.com)
+
+The processed version contains approximately **53,614 training, 2,512 validation, and 12,851 test sequences**, each associated with an experimental stability score.
+
+---
+
+### How the Two Datasets Will Be Used
+
+The two datasets provide complementary information.
+
+**Tsuboyama 2023** is most useful for:
+
+$$
+\boxed{\text{Which mutation improves or damages this protein?}}
+$$
+
+because it contains large single- and double-mutation landscapes.
+
+**Rocklin 2017** is most useful for:
+
+$$
+\boxed{\text{Can the system evaluate newly designed proteins?}}
+$$
+
+because it contains thousands of experimentally tested de novo protein designs.
+
+Therefore, together they support the complete research goal:
+
+$$
+\text{Generated Protein}
+\rightarrow
+\text{Stability Evaluation}
+\rightarrow
+\text{Mutation Map}
+\rightarrow
+\text{Suggested Improvements}
+$$
+
+Before treating Rocklin as a fully independent test dataset, sequence overlap with the selected Tsuboyama training set should be checked and removed.
+
 
 # Research Direction in One Sentence
 
